@@ -16,7 +16,13 @@
 
 **Way of working:** one step at a time → review → commit per step.
 
-**Local only (gitignored):** `.env.local` – recreate it from `.env.example` on another machine.
+**Local only (gitignored):** `.env.local` – on another machine create it with:
+```
+APP_ENV=development
+LOG_LEVEL=debug
+MAX_BOOKINGS=5
+ADMIN_API_KEY=local-dev-key
+```
 
 ---
 
