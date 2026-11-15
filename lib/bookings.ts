@@ -1,10 +1,18 @@
 import { getConfig } from './config';
+import {
+  addDays,
+  CLOSE_HOUR,
+  isActiveBooking,
+  isPastSlot,
+  isValidSlotTime,
+  OPEN_HOUR,
+} from './slots';
 
 /**
  * In-memory booking store.
  *
- * Deliberately simple: data lives in the Node.js process and is lost when the
- * container restarts (e.g. when Render's free instance spins down). See the
+ * Bookings are one-hour slots (see lib/slots.ts). Deliberately simple: data
+ * lives in the Node.js process and is lost when the container restarts (e.g. when Render's free instance spins down). See the
  * README for how this would change with a real database.
  */
 
@@ -33,7 +41,6 @@ const globalStore = globalThis as unknown as { __bookings?: Booking[] };
 const bookings: Booking[] = (globalStore.__bookings ??= []);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function sortKey(b: Booking) {
   return `${b.date}T${b.time}`;
@@ -41,6 +48,10 @@ function sortKey(b: Booking) {
 
 export function listBookings(): Booking[] {
   return [...bookings].sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+}
+
+export function countActiveBookings(): number {
+  return bookings.filter((b) => isActiveBooking(b)).length;
 }
 
 export function createBooking(input: BookingInput): Booking {
@@ -51,18 +62,26 @@ export function createBooking(input: BookingInput): Booking {
   if (name.length < 2 || name.length > 60) {
     throw new BookingError('Name must be between 2 and 60 characters', 400);
   }
-  if (!DATE_RE.test(date) || Number.isNaN(Date.parse(date))) {
-    throw new BookingError('Date must be in the format YYYY-MM-DD', 400);
+  // Round-trip check also rejects impossible dates such as 2026-02-31
+  if (!DATE_RE.test(date) || Number.isNaN(Date.parse(date)) || addDays(date, 0) !== date) {
+    throw new BookingError('Date must be a valid date in the format YYYY-MM-DD', 400);
   }
-  if (!TIME_RE.test(time)) {
-    throw new BookingError('Time must be in the format HH:MM', 400);
+  if (!isValidSlotTime(time)) {
+    throw new BookingError(
+      `Time must be a full hour between ${OPEN_HOUR}:00 and ${CLOSE_HOUR - 1}:00`,
+      400,
+    );
+  }
+  if (isPastSlot(date, time)) {
+    throw new BookingError(`The slot ${date} ${time} has already started or passed`, 400);
   }
   if (bookings.some((b) => b.date === date && b.time === time)) {
     throw new BookingError(`The slot ${date} ${time} is already booked`, 409);
   }
 
+  // Only upcoming bookings count towards the limit; past ones free their place.
   const { maxBookings } = getConfig();
-  if (bookings.length >= maxBookings) {
+  if (countActiveBookings() >= maxBookings) {
     throw new BookingError(`Booking limit reached (${maxBookings})`, 409);
   }
 
