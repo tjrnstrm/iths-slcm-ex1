@@ -1,0 +1,77 @@
+name: Build and deploy
+
+# main -> production service on Render, dev -> development service.
+# workflow_dispatch adds a "Run workflow" button for manual re-runs.
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+# Least privilege: the workflow only needs to read the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older, still-running pipeline,
+# so an outdated commit can never be deployed after a newer one.
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # 1. Check that the app compiles and builds
+  build:
+    name: Build app
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  # 2. Check that the Docker image builds (same Dockerfile Render uses).
+  #    The image is not pushed anywhere.
+  docker:
+    name: Build Docker image
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build -t slcm-ex1:${{ github.sha }} .
+
+  # 3. Only runs if BOTH previous jobs succeeded (needs). Any failure above
+  #    stops the pipeline here and Render is never contacted.
+  deploy:
+    name: Trigger Render deploy
+    needs: [build, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    steps:
+      - name: Call Render Deploy Hook
+        env:
+          # The hook URL is a secret: anyone who has it can trigger a deploy.
+          # It is read from GitHub secrets and never written in this file.
+          HOOK_URL: ${{ github.ref_name == 'main' && secrets.RENDER_DEPLOY_HOOK_URL || secrets.RENDER_DEPLOY_HOOK_URL_DEV }}
+        run: |
+          if [ -z "$HOOK_URL" ]; then
+            echo "::error::Deploy hook secret for '${{ github.ref_name }}' is not set (RENDER_DEPLOY_HOOK_URL / RENDER_DEPLOY_HOOK_URL_DEV)"
+            exit 1
+          fi
+          # -f: fail the step on HTTP errors, -sS: quiet but show errors
+          curl -fsS -X POST "$HOOK_URL" -o /dev/null -w "Render responded with HTTP %{http_code}\n"
+          echo "Deploy of ${{ github.sha }} to ${{ github.ref_name }} triggered" >> "$GITHUB_STEP_SUMMARY"
