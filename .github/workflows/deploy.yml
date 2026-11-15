@@ -1,10 +1,10 @@
 name: Build and deploy
 
-# main -> production service on Render, dev -> development service.
-# workflow_dispatch adds a "Run workflow" button for manual re-runs.
+# Every push to main is built, checked and, if everything is green, deployed
+# to Render. workflow_dispatch adds a "Run workflow" button for manual re-runs.
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 
 # Least privilege: the workflow only needs to read the repository.
@@ -60,16 +60,16 @@ jobs:
     needs: [build, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: production
     steps:
       - name: Call Render Deploy Hook
         env:
           # The hook URL is a secret: anyone who has it can trigger a deploy.
           # It is read from GitHub secrets and never written in this file.
-          HOOK_URL: ${{ github.ref_name == 'main' && secrets.RENDER_DEPLOY_HOOK_URL || secrets.RENDER_DEPLOY_HOOK_URL_DEV }}
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$HOOK_URL" ]; then
-            echo "::error::Deploy hook secret for '${{ github.ref_name }}' is not set (RENDER_DEPLOY_HOOK_URL / RENDER_DEPLOY_HOOK_URL_DEV)"
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL is not set (Settings -> Secrets and variables -> Actions)"
             exit 1
           fi
           # -f: fail the step on HTTP errors, -sS: quiet but show errors
