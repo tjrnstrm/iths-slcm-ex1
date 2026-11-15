@@ -21,7 +21,7 @@ export type Config = {
   version: string;
 };
 
-const DEFAULT_MAX_BOOKINGS = 20;
+const DEFAULT_MAX_BOOKINGS = 5;
 
 // Only warn once per process for each bad value, not on every request.
 const warned = new Set<string>();

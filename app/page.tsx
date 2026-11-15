@@ -1,19 +1,20 @@
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
-import { listBookings } from '@/lib/bookings';
+import { countActiveBookings, listBookings } from '@/lib/bookings';
 import { getConfig } from '@/lib/config';
+import { isActiveBooking, slotLabel } from '@/lib/slots';
 
 async function Stats() {
   await connection();
   const bookings = listBookings();
   const { maxBookings } = getConfig();
-  const next = bookings[0];
+  const next = bookings.find((b) => isActiveBooking(b));
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">
-      <Card label="Bookings" value={`${bookings.length} / ${maxBookings}`} />
-      <Card label="Next booking" value={next ? `${next.date} ${next.time}` : '—'} />
+      <Card label="Upcoming bookings" value={`${countActiveBookings()} / ${maxBookings}`} />
+      <Card label="Next booking" value={next ? `${next.date} ${slotLabel(next.time)}` : '—'} />
       <Card label="Booked by" value={next ? next.name : '—'} />
     </div>
   );
