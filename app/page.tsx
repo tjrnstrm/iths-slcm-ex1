@@ -32,7 +32,7 @@ function Card({ label, value }: { label: string; value: string }) {
 export default function Home() {
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
-      <h2 className="text-3xl font-bold">Dashboard</h2>
+      <h2 className="text-3xl font-bold">SLCM Examination 1</h2>
       <p className="text-neutral-400">
         A small booking system used to demonstrate Docker, CI/CD with GitHub Actions and
         deployment to Render.
